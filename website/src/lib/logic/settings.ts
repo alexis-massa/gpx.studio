@@ -205,6 +205,7 @@ type RoutingProfile =
     | 'bike'
     | 'racing_bike'
     | 'gravel_bike'
+    | 'white_roads'
     | 'mountain_bike'
     | 'foot'
     | 'motorcycle'
@@ -251,6 +252,7 @@ export const settings = {
                 'bike',
                 'racing_bike',
                 'gravel_bike',
+                'white_roads',
                 'mountain_bike',
                 'foot',
                 'motorcycle',

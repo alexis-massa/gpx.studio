@@ -15,6 +15,7 @@ export const routingProfiles: { [key: string]: RoutingProfile } = {
     bike: { engine: 'graphhopper', profile: 'bike' },
     racing_bike: { engine: 'graphhopper', profile: 'racingbike' },
     gravel_bike: { engine: 'graphhopper', profile: 'gravelbike' },
+    white_roads: { engine: 'graphhopper', profile: 'bike' },
     mountain_bike: { engine: 'graphhopper', profile: 'mtb' },
     foot: { engine: 'graphhopper', profile: 'foot' },
     motorcycle: { engine: 'graphhopper', profile: 'motorbike' },
@@ -55,55 +56,46 @@ const mtbRatingToScale: { [key: string]: string } = {
 };
 
 const graphhopperBlockPrivateCustomModels: { [key: string]: any } = {
-    bike: {
-        priority: [
-            {
-                if: 'bike_road_access == PRIVATE',
-                multiply_by: '0.0',
-            },
-        ],
+    bike: { priority: [{ if: 'bike_road_access == PRIVATE', multiply_by: '0.0' }] },
+    racingbike: { priority: [{ if: 'bike_road_access == PRIVATE', multiply_by: '0.0' }] },
+    gravelbike: { priority: [{ if: 'bike_road_access == PRIVATE', multiply_by: '0.0' }] },
+    white_roads: {
+        engine: 'graphhopper',
+        profile: 'gravelbike',
+        customModel: {
+            priority: [
+                // Hard blocks
+                { if: 'road_class == MOTORWAY || road_class == TRUNK', multiply_by: '0.0' },
+                { if: 'road_class == PRIMARY', multiply_by: '0.05' },
+                { if: 'road_class == SECONDARY', multiply_by: '0.2' },
+                { if: 'road_class == TERTIARY', multiply_by: '0.6' },
+
+                // Sweet spot: unclassified + good tracks
+                { if: 'road_class == UNCLASSIFIED', multiply_by: '1.0' },
+                { if: 'road_class == RESIDENTIAL', multiply_by: '0.85' },
+
+                // Tracks: welcome grade1+2, discourage rougher
+                { if: 'road_class == TRACK', multiply_by: '1.0' },
+                { if: 'road_class == TRACK && track_type == GRADE3', multiply_by: '0.4' },
+                { if: 'road_class == TRACK && track_type == GRADE4', multiply_by: '0.15' },
+                { if: 'road_class == TRACK && track_type == GRADE5', multiply_by: '0.05' },
+                { if: 'road_class == TRACK && track_type == MISSING', multiply_by: '0.5' },
+
+                // Surface refinement across all road types
+                { if: 'surface == SAND || surface == MUD', multiply_by: '0.1' },
+                {
+                    if: 'smoothness == VERY_BAD || smoothness == HORRIBLE || smoothness == VERY_HORRIBLE || smoothness == IMPASSABLE',
+                    multiply_by: '0.1',
+                },
+            ],
+            distance_influence: 80,
+        },
     },
-    racingbike: {
-        priority: [
-            {
-                if: 'bike_road_access == PRIVATE',
-                multiply_by: '0.0',
-            },
-        ],
-    },
-    gravelbike: {
-        priority: [
-            {
-                if: 'bike_road_access == PRIVATE',
-                multiply_by: '0.0',
-            },
-        ],
-    },
-    mtb: {
-        priority: [
-            {
-                if: 'bike_road_access == PRIVATE',
-                multiply_by: '0.0',
-            },
-        ],
-    },
-    foot: {
-        priority: [
-            {
-                if: 'foot_road_access == PRIVATE',
-                multiply_by: '0.0',
-            },
-        ],
-    },
-    motorcycle: {
-        priority: [
-            {
-                if: 'road_access == PRIVATE',
-                multiply_by: '0.0',
-            },
-        ],
-    },
+    mtb: { priority: [{ if: 'bike_road_access == PRIVATE', multiply_by: '0.0' }] },
+    foot: { priority: [{ if: 'foot_road_access == PRIVATE', multiply_by: '0.0' }] },
+    motorcycle: { priority: [{ if: 'road_access == PRIVATE', multiply_by: '0.0' }] },
 };
+
 async function getGraphHopperRoute(
     points: Coordinates[],
     graphHopperProfile: string,
