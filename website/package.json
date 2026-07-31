@@ -4,6 +4,8 @@
     "private": true,
     "scripts": {
         "dev": "vite dev",
+        "backend": "docker ps -aq -f name=^graphhopper$ | grep -q . && docker start graphhopper || (cd ../graphhopper-local && docker run -d --name graphhopper -p 8989:8989 -p 8990:8990 -e JAVA_OPTS=\"-Xmx8g -Xms4g\" -v \"$(pwd):/data\" israelhikingmap/graphhopper:latest --host 0.0.0.0 -i /data/rhone-alpes-latest.osm.pbf -o /data/graph-cache -c /data/config.yml)",
+        "dev-full": "npm run backend && vite dev",
         "build": "vite build",
         "prebuild": "npx tsx src/lib/scripts/pwa-manifest.ts",
         "postbuild": "npx tsx src/lib/scripts/sitemap.ts",

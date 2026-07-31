@@ -3,18 +3,54 @@ import { TrackPoint, distance } from 'gpx';
 import { settings } from '$lib/logic/settings';
 import { getElevation } from '$lib/utils';
 import { get } from 'svelte/store';
+import { env } from '$env/dynamic/public';
+
+// Lets PUBLIC_GRAPHHOPPER_URL in .env point routing at a local instance for
+// development; defaults to production when unset (see README).
+const graphhopperBaseUrl = env.PUBLIC_GRAPHHOPPER_URL || 'https://graphhopper.gpx.studio';
 
 const { routing, routingProfile, privateRoads } = settings;
 
 export type RoutingProfile = {
     engine: 'graphhopper' | 'brouter';
     profile: string;
+    // Extra priority rules layered on top of the base GraphHopper profile's
+    // own custom_model (merged server-side, see CustomModel.merge).
+    customModel?: { priority?: any[]; distance_influence?: number };
+};
+
+// A middle ground between gravel and road/mtb biking: small paved roads with
+// little traffic, and well-maintained unpaved tracks ("white roads" /
+// "strade bianche"). Graduated penalties rather than hard cutoffs, so a
+// detour is preferred over a bad surface, but nothing is ever impossible.
+const whiteRoadCustomModel = {
+    priority: [
+        { if: 'surface == GRAVEL || surface == COBBLESTONE', multiply_by: '0.9' },
+        { if: 'surface == DIRT || surface == GROUND || surface == UNPAVED', multiply_by: '0.6' },
+        { if: 'surface == SAND || surface == GRASS || surface == WOOD', multiply_by: '0.3' },
+        { if: 'surface == OTHER', multiply_by: '0.25' },
+        { if: 'track_type == GRADE3', multiply_by: '0.5' },
+        { if: 'track_type == GRADE4', multiply_by: '0.25' },
+        { if: 'track_type == GRADE5', multiply_by: '0.1' },
+        { if: 'hike_rating == 2', multiply_by: '0.3' },
+        { if: 'hike_rating >= 3', multiply_by: '0.1' },
+        { if: 'road_class == SECONDARY', multiply_by: '0.6' },
+        { if: 'road_class == PRIMARY', multiply_by: '0.35' },
+    ],
+    // distance_influence is intentionally left unset: GraphHopper rejects
+    // request-level custom_models with a value below 50, so the base
+    // gravelbike profile's own 50 applies as-is.
 };
 
 export const routingProfiles: { [key: string]: RoutingProfile } = {
     bike: { engine: 'graphhopper', profile: 'bike' },
     racing_bike: { engine: 'graphhopper', profile: 'racingbike' },
     gravel_bike: { engine: 'graphhopper', profile: 'gravelbike' },
+    white_road_bike: {
+        engine: 'graphhopper',
+        profile: 'gravelbike',
+        customModel: whiteRoadCustomModel,
+    },
     mountain_bike: { engine: 'graphhopper', profile: 'mtb' },
     foot: { engine: 'graphhopper', profile: 'foot' },
     motorcycle: { engine: 'graphhopper', profile: 'motorbike' },
@@ -26,7 +62,12 @@ export function route(points: Coordinates[]): Promise<TrackPoint[]> {
     if (get(routing)) {
         const profile = routingProfiles[get(routingProfile)];
         if (profile.engine === 'graphhopper') {
-            return getGraphHopperRoute(points, profile.profile, get(privateRoads));
+            return getGraphHopperRoute(
+                points,
+                profile.profile,
+                get(privateRoads),
+                profile.customModel
+            );
         } else {
             return getBRouterRoute(points, profile.profile);
         }
@@ -107,9 +148,14 @@ const graphhopperBlockPrivateCustomModels: { [key: string]: any } = {
 async function getGraphHopperRoute(
     points: Coordinates[],
     graphHopperProfile: string,
-    privateRoads: boolean
+    privateRoads: boolean,
+    extraCustomModel?: { priority?: any[]; distance_influence?: number }
 ): Promise<TrackPoint[]> {
-    let response = await fetch('https://graphhopper.gpx.studio/route', {
+    const privateRoadsPriority = privateRoads
+        ? []
+        : (graphhopperBlockPrivateCustomModels[graphHopperProfile]?.priority ?? []);
+
+    let response = await fetch(`${graphhopperBaseUrl}/route`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -120,9 +166,12 @@ async function getGraphHopperRoute(
             elevation: true,
             points_encoded: false,
             details: graphhopperDetails,
-            custom_model: privateRoads
-                ? {}
-                : graphhopperBlockPrivateCustomModels[graphHopperProfile] || {},
+            custom_model: {
+                priority: [...privateRoadsPriority, ...(extraCustomModel?.priority ?? [])],
+                ...(extraCustomModel?.distance_influence !== undefined
+                    ? { distance_influence: extraCustomModel.distance_influence }
+                    : {}),
+            },
         }),
     });
 
